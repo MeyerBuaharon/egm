@@ -1,0 +1,21 @@
+{
+  "name": "Forest Edge",
+  "biome": "forest",
+  "background_texture": "res://assets/levels/forest-estate-bg-far.png",
+  "background_scale": 2.0,
+  "background_scroll": 0.04,
+  "corruption": 0.0,
+  "blocks": [
+    [30,700,1220,80],[10,125,20,655],[1250,125,20,655],[10,110,1260,15],
+    [180,600,230,20],[520,540,260,20],[890,600,220,20],
+    [330,430,200,20],[700,410,220,20],
+    [480,300,240,20]
+  ],
+  "targets": [[1030,540],[1120,430]],
+  "dummies": [[620,682],[960,682],[600,520]],
+  "labels": [
+    {"text":"SUNLIGHT STILL REACHES THE FLOOR","at":[90,185]},
+    {"text":"Open ground — dig anywhere","at":[230,662]},
+    {"text":"Canopy step","at":[500,275]}
+  ]
+}

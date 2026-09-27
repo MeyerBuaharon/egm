@@ -1,0 +1,127 @@
+extends Node2D
+
+const ATLAS = preload("res://assets/characters/classes.png")
+const NAMES := ["Warden", "Strider", "Hexbinder", "Wildborn"]
+const COLORS := [Color("e7a34c"), Color("e66561"), Color("bc92ef"), Color("b0d47b")]
+const WEAPONS := ["Sword", "Hammer", "Staff", "Daggers"]
+var actor: CharacterBody2D
+var class_index := 0
+var heavy := false
+var weapon_index := 0
+var phase := 0.0
+var frame_index := 0
+var swing := 0.0
+var bounds: Array[Rect2] = []
+var atlas_scale: Array[float] = []
+var pose := "Idle"
+
+func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var image := ATLAS.get_image()
+	for row in 4:
+		for col in 8:
+			var min_x := 192
+			var min_y := 256
+			var max_x := 0
+			var max_y := 0
+			for y in 256:
+				for x in 192:
+					if image.get_pixel(col * 192 + x, row * 256 + y).a > 0.5:
+						min_x = mini(min_x, x)
+						min_y = mini(min_y, y)
+						max_x = maxi(max_x, x)
+						max_y = maxi(max_y, y)
+			bounds.append(Rect2(col * 192 + min_x, row * 256 + min_y, max_x - min_x + 1, max_y - min_y + 1))
+		atlas_scale.append(57.0 / bounds[row * 8].size.y)
+
+func _process(dt: float) -> void:
+	phase += dt * clampf(absf(actor.velocity.x) / 35.0, 5, 16)
+	swing = maxf(swing - dt, 0)
+	visible = not actor.burrowed
+	if actor.slide_time > 0 or actor.standing_shape.size.y < 30:
+		frame_index = 7
+		pose = "Slide"
+	elif not actor.is_on_floor():
+		frame_index = 5 if actor.velocity.y < 0 else 6
+		pose = "Wall cling" if actor.is_on_wall() else ("Jump" if frame_index == 5 else "Fall")
+	elif absf(actor.velocity.x) > 20:
+		frame_index = 1 + int(phase) % 4
+		pose = "Run"
+	else:
+		frame_index = 0
+		pose = "Idle"
+	queue_redraw()
+
+func _draw() -> void:
+	if bounds.is_empty():
+		return
+	var source := bounds[class_index * 8 + frame_index]
+	var ratio := atlas_scale[class_index]
+	var size := source.size * ratio
+	var lean := 0.07 if heavy else 0.0
+	if pose == "Wall cling":
+		lean = -0.16
+	# Keep the foot anchor fixed; animation never moves the physics body.
+	draw_set_transform(Vector2(0, 19), lean * actor.facing, Vector2(actor.facing, 1) * actor.squash)
+	var rect := Rect2(Vector2(-size.x * 0.5, -size.y), size)
+	var tint := Color(0.82, 0.87, 0.96) if heavy else Color.WHITE
+	draw_texture_rect_region(ATLAS, rect, source, tint)
+	var low := frame_index == 7
+	var shoulder := Vector2(-1, -18 if low else -41)
+	if heavy:
+		# Removable armor overlays, not a second baked-in character costume.
+		draw_rect(Rect2(shoulder + Vector2(-7, -4), Vector2(14, 9)), Color("303e53"))
+		draw_rect(Rect2(shoulder + Vector2(-6, -5), Vector2(12, 3)), COLORS[class_index])
+		draw_rect(Rect2(shoulder + Vector2(-5, 4), Vector2(8, 7)), Color("52637b"))
+	var hand := Vector2(14, -22)
+	if frame_index >= 1 and frame_index <= 5:
+		hand = Vector2(16, -34)
+	if low:
+		hand = Vector2(17, -14)
+	var angle := -0.4 if heavy else 0.35
+	if low:
+		angle = 0.9
+	if pose == "Wall cling":
+		# Stow to the back so hands can grip the wall.
+		hand = Vector2(-9, -25)
+		angle = -2.5
+	if swing > 0:
+		angle = lerpf(1.5, -1.6, swing / 0.28)
+	draw_set_transform(Vector2(0, 19), lean * actor.facing, Vector2(actor.facing, 1) * actor.squash)
+	var weapon_transform := Transform2D(angle, hand)
+	draw_weapon(weapon_transform, heavy or weapon_index == 1 or weapon_index == 2)
+	if swing > 0:
+		draw_arc(hand, 31 if heavy else 23, -1.8, 0.5, 12, Color(COLORS[class_index], swing / 0.28), 2)
+	draw_set_transform(Vector2.ZERO)
+
+func line(t: Transform2D, a: Vector2, b: Vector2, color: Color, width: float) -> void:
+	draw_line(t * a, t * b, color, width)
+
+func draw_weapon(t: Transform2D, two_handed: bool) -> void:
+	var metal := Color("c2d6e0")
+	var accent: Color = COLORS[class_index]
+	line(t, Vector2(0, 5), Vector2(0, -12), Color("1a202b"), 6)
+	line(t, Vector2(0, 5), Vector2(0, -12), Color("856447"), 3)
+	match weapon_index:
+		0:
+			line(t, Vector2(0, -7), Vector2(0, -36 if heavy else -25), metal, 5 if heavy else 3)
+			line(t, Vector2(-6, -8), Vector2(6, -8), accent, 3)
+		1:
+			line(t, Vector2(0, 8), Vector2(0, -31), Color("a17b50"), 4)
+			line(t, Vector2(-10, -30), Vector2(10, -30), Color("202937"), 12)
+			line(t, Vector2(-9, -31), Vector2(9, -31), metal, 8)
+			line(t, Vector2(-3, -31), Vector2(3, -31), accent, 8)
+		2:
+			line(t, Vector2(0, 18), Vector2(0, -32), Color("a17b50"), 3)
+			draw_circle(t * Vector2(0, -33), 5, Color("253645"))
+			draw_circle(t * Vector2(0, -34), 3, accent)
+		3:
+			line(t, Vector2(0, -5), Vector2(0, -19), metal, 3)
+			line(t, Vector2(-5, -5), Vector2(5, -5), accent, 2)
+			line(t, Vector2(-14, 1), Vector2(-14, -12), metal, 3)
+			line(t, Vector2(-18, 1), Vector2(-10, 1), accent, 2)
+	# Visible gloved grips; heavy/long weapons get a supporting second hand.
+	draw_circle(t * Vector2.ZERO, 3, Color("b4a38b"))
+	if two_handed:
+		line(t, Vector2(-10, 5), Vector2(0, 9), Color("344354"), 5)
+		draw_circle(t * Vector2(0, 9), 3, Color("b4a38b"))

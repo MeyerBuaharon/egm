@@ -1,0 +1,23 @@
+{
+  "_note": "Each biome has an early and late palette. A level names a biome and a corruption value 0..1; room.gd lerps between them. Only the endpoints need art.",
+  "forest": {
+    "early": {
+      "background": "121e18",
+      "grid": "4a7a5220",
+      "block": "2f3a28",
+      "edge": "8fbf5c",
+      "floor": "3a3122",
+      "floor_detail": "6d8a45",
+      "label": "b6cfa0"
+    },
+    "late": {
+      "background": "07090f",
+      "grid": "3d3a6420",
+      "block": "1a1a22",
+      "edge": "7a8fc4",
+      "floor": "1d1a1e",
+      "floor_detail": "5a6b8a",
+      "label": "8f96b8"
+    }
+  }
+}
