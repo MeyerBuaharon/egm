@@ -53,9 +53,12 @@ func _ready() -> void:
 	var mage := preload("res://scripts/mage_visual.gd").new()
 	mage.actor = actor
 	add_child(mage)
-	var modular := preload("res://scripts/modular_character.gd").new()
+	var modular := preload("res://scripts/warden_fullbody.gd").new()
 	modular.actor = actor
 	add_child(modular)
+	var roster := preload("res://scripts/roster_visual.gd").new()
+	roster.actor=actor
+	add_child(roster)
 
 func on_action(kind: String, _at: Vector2) -> void:
 	if kind in ["dig", "emerge", "bounce", "wall", "land"]:
@@ -278,7 +281,7 @@ func limb(source_a: Vector2, source_b: Vector2, a: Vector2, b: Vector2, width: f
 	draw_colored_polygon(vertices,tint,uv,ATLAS)
 
 func _draw() -> void:
-	if class_index in [0,2]:
+	if class_index in [0,2] or actor.modular_equipment:
 		return
 	var accent: Color = COLORS[class_index]
 	if class_index == 2 and not actor.burrowed and actor.is_on_floor():

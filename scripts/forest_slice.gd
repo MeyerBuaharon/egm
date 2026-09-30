@@ -1,12 +1,24 @@
 extends Node2D
 
 const BACKGROUND = preload("res://assets/levels/forest-kit/background.png")
+const MANSION_GATE = preload("res://assets/levels/forest-kit/mansion-gate.png")
 const OAK = preload("res://assets/levels/forest-kit/oak.png")
+const Progress = preload("res://scripts/forest_progress.gd")
+const Save = preload("res://scripts/forest_save.gd")
 const Terrain = preload("res://scripts/forest_terrain.gd")
 const MAPS := [
 	{"name":"Forest Edge", "blocks":[Rect2(0,700,1280,120),Rect2(340,555,320,80),Rect2(760,425,300,80)], "tint":Color(0.72,0.81,0.78)},
-	{"name":"Deep Grove", "blocks":[Rect2(0,700,1280,120),Rect2(240,570,270,80),Rect2(620,455,270,80),Rect2(1010,550,230,80)], "tint":Color(0.43,0.55,0.72)}
+	{"name":"Deep Grove", "blocks":[Rect2(0,700,1280,120),Rect2(240,570,270,80),Rect2(620,455,270,80),Rect2(1010,550,230,80)], "tint":Color(0.43,0.55,0.72)},
+	{"name":"Mansion Gate", "blocks":[Rect2(0,700,1280,120),Rect2(280,560,250,80),Rect2(610,445,240,80)], "tint":Color(0.39,0.37,0.52)}
 ]
+var progress := Progress.new()
+var passive_tree: Control
+var boss: Node2D
+var notice := ""
+var notice_time := 0.0
+var saving_enabled := false
+var loading_save := true
+var map_props: Array[Node2D]=[]
 var map_index := 0
 var terrain_nodes: Array[Node2D] = []
 var portals: Array[Node2D] = []
@@ -14,6 +26,7 @@ var heading: Label
 var minimap: Control
 var fade: ColorRect
 var transitioning := false
+var character_creation: Control
 var equipment_panel: Control
 var pickups: Array[Node2D] = []
 var action_hud: Control
@@ -33,15 +46,19 @@ var scenery: Array[Node2D] = []
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color("142623"))
-	for entry in [["left",[KEY_A,KEY_LEFT]],["right",[KEY_D,KEY_RIGHT]],["jump",[KEY_SPACE,KEY_W]],["portal",[KEY_UP,KEY_E]],["dash",[KEY_SHIFT]],["reset",[KEY_R]],["flourish",[KEY_J]],["layers",[KEY_F3]],["dig",[KEY_S,KEY_DOWN]]]:
+	for entry in [["left",[KEY_A,KEY_LEFT]],["right",[KEY_D,KEY_RIGHT]],["jump",[KEY_SPACE,KEY_W]],["portal",[KEY_UP,KEY_E]],["dash",[KEY_SHIFT]],["reset",[KEY_R]],["flourish",[KEY_J]],["layers",[KEY_F8]],["dig",[KEY_S,KEY_DOWN]]]:
 		bind(entry[0],entry[1])
 	bind("warden_class",[KEY_F1])
 	bind("mage_class",[KEY_F2])
+	bind("strider_class",[KEY_F3])
+	bind("wildborn_class",[KEY_F4])
 	for i in 4:
 		bind("ability_%d" % i,[KEY_1+i])
 	bind("cycle_element",[KEY_Q])
 	bind("pickup",[KEY_F])
 	bind("equipment",[KEY_I])
+	bind("passive_tree",[KEY_P])
+	bind("character_creation",[KEY_C])
 	backdrop = Sprite2D.new()
 	backdrop.texture = BACKGROUND
 	backdrop.centered = false
@@ -76,7 +93,7 @@ func _ready() -> void:
 	hud.add_child(heading)
 	var controls := Label.new()
 	controls.position = Vector2(35,59)
-	controls.text = "A/D Move   ↑/E Portal   F1 Warden / F2 Mage   F Pickup   I Equipment   R Reset"
+	controls.text = "A/D Move   Space Jump   J Attack   Shift Dash   S Dig   Q Style   ↑ Portal   F Loot   I Bag   P Passives   F1–F4 Class"
 	controls.add_theme_font_size_override("font_size",14)
 	controls.add_theme_color_override("font_color",Color("c3cfbd"))
 	controls.add_theme_color_override("font_shadow_color",Color.BLACK)
@@ -94,12 +111,32 @@ func _ready() -> void:
 	equipment_panel = preload("res://scripts/equipment_panel.gd").new()
 	equipment_panel.world = self
 	hud.add_child(equipment_panel)
+	character_creation = preload("res://scripts/character_creation.gd").new()
+	character_creation.world = self
+	hud.add_child(character_creation)
+	passive_tree=preload("res://scripts/passive_tree.gd").new()
+	passive_tree.world=self
+	hud.add_child(passive_tree)
+	var campaign_hud := preload("res://scripts/campaign_hud.gd").new()
+	campaign_hud.world=self
+	hud.add_child(campaign_hud)
+	# Tree overlays the world HUD while open.
+	hud.move_child(passive_tree,hud.get_child_count()-1)
 	fade = ColorRect.new()
 	fade.color = Color(0.015,0.025,0.04,0)
 	fade.size = Vector2(1280,800)
 	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(fade)
 	load_map(0)
+	saving_enabled=not "--script" in OS.get_cmdline_args() and not "-s" in OS.get_cmdline_args() and not "--fresh" in OS.get_cmdline_user_args() and DisplayServer.get_name()!="headless"
+	if saving_enabled:
+		var saved := Save.load_data()
+		if not saved.is_empty(): Save.apply(self,saved)
+		elif FileAccess.file_exists(Save.SAVE_PATH):
+			saving_enabled=false
+			notify_player("Save could not be read. This session will not overwrite it.")
+	loading_save=false
+	player.equipment.changed.connect(save_progress)
 	if "--mage" in OS.get_cmdline_user_args():
 		select_class(2)
 	if "--capture-slice" in OS.get_cmdline_user_args():
@@ -125,25 +162,132 @@ func spawn_mobs() -> void:
 		mob.spawn = setup[0]
 		mob.patrol = setup[1]
 		mob.direction = setup[2]
-		mob.defeated.connect(award_mob_xp)
+		mob.defeated.connect(award_mob_xp.bind(mob))
 		add_child(mob)
 		combat_targets.append(mob)
 
-func award_mob_xp() -> void:
-	experience += 25
-	while experience >= experience_needed:
-		experience -= experience_needed
-		character_level += 1
-		experience_needed += 50
+func award_mob_xp(mob: Node2D = null) -> void:
+	award_experience(25)
+	if progress.has("siphon"): player.health=mini(100,player.health+8)
+	if is_instance_valid(mob):
+		add_map_item("ember",mob.position+Vector2(-12,18),"",6)
+		if mob.hit_count%3==0: add_map_item("potion",mob.position+Vector2(16,18))
+	save_progress()
+
+func award_experience(amount: int) -> void:
+	experience+=amount
+	while experience>=experience_needed:
+		experience-=experience_needed
+		character_level+=1
+		experience_needed+=50
+		progress.points+=1
+		notify_player("Level %d · +1 passive point" % character_level)
+
+func notify_player(message: String) -> void:
+	notice=message
+	notice_time=4.5
+
+func save_progress() -> void:
+	if not saving_enabled or loading_save: return
+	var error := Save.write(Save.capture(self))
+	if error!=OK:
+		push_warning("Progress save failed: %s" % error_string(error))
+		notify_player("Could not save progress. Your current session is still active.")
+
+func modify_damage(amount: int, target_health: int, target_max: int) -> int:
+	return progress.damage(amount,target_health,target_max)
+
+func add_map_item(kind: String, at: Vector2, id: String = "", amount: int = 6) -> Node2D:
+	var item := preload("res://scripts/map_item.gd").new()
+	item.world=self
+	item.kind=kind
+	item.item_id=id
+	item.amount=amount
+	item.position=at
+	add_child(item)
+	pickups.append(item)
+	return item
+
+func spawn_map_content() -> void:
+	if map_index>0:
+		var gate := Sprite2D.new()
+		gate.texture=MANSION_GATE
+		gate.centered=false
+		var scale_factor := 0.42 if map_index==2 else 0.25
+		gate.scale=Vector2.ONE*scale_factor
+		gate.position=Vector2(950-768*scale_factor,700-943*scale_factor)
+		gate.modulate=Color.WHITE if map_index==2 else Color(0.65,0.7,0.8,0.65)
+		gate.z_index=-4
+		add_child(gate)
+		map_props.append(gate)
+	if map_index==0:
+		add_map_item("cache",Vector2(280,700),"edge_cache",18)
+		add_map_item("memory",Vector2(560,555),"edge_memory")
+		add_map_item("shrine",Vector2(95,700))
+	elif map_index==1:
+		add_map_item("cache",Vector2(1060,550),"grove_cache",26)
+		add_map_item("memory",Vector2(745,455),"grove_memory")
+		add_map_item("potion",Vector2(400,570),"grove_tonic")
+		add_map_item("shrine",Vector2(1140,700))
+	else:
+		add_map_item("memory",Vector2(720,445),"gate_memory")
+		add_map_item("shrine",Vector2(170,700))
+		if not progress.boss_defeated:
+			boss=preload("res://scripts/hollow_regent.gd").new()
+			boss.world=self
+			boss.spawn=Vector2(980,682)
+			boss.defeated.connect(on_boss_defeated)
+			add_child(boss)
+			combat_targets.append(boss)
+		elif not "mansion_seal" in progress.collected:
+			add_map_item("seal",Vector2(1010,700),"mansion_seal")
+
+func on_boss_defeated() -> void:
+	if progress.boss_defeated: return
+	progress.boss_defeated=true
+	clear_boss_adds()
+	award_experience(180)
+	add_map_item("seal",Vector2(1010,700),"mansion_seal")
+	notify_player("The Hollow Regent falls. Claim the seal at the gate.")
+	save_progress()
+
+func clear_boss_adds() -> void:
+	for mob in combat_targets.duplicate():
+		if mob!=boss:
+			combat_targets.erase(mob)
+			remove_child(mob)
+			mob.queue_free()
+
+func on_player_defeated() -> void:
+	if is_instance_valid(boss) and not progress.boss_defeated:
+		boss.reset()
+		clear_boss_adds()
+	for hazard in get_tree().get_nodes_in_group("boss_hazards"):
+		hazard.set_physics_process(false)
+		hazard.queue_free()
+	notify_player("Returned to the wayshrine. Your loot and passives are safe.")
+
+func add_portal(destination: int, x: float) -> void:
+	var portal := preload("res://scripts/forest_portal.gd").new()
+	portal.position=Vector2(x,700)
+	portal.destination=destination
+	portal.destination_name=MAPS[destination].name
+	add_child(portal)
+	portals.append(portal)
 
 func select_class(index: int) -> void:
+	if index<0 or index>=4: return
 	if player.combat.active or player.burrowed or transitioning:
 		return
 	var old: Node = player.combat
 	old.cancel()
 	player.remove_child(old)
 	old.queue_free()
-	player.combat = preload("res://scripts/mage_combat.gd").new() if index==2 else preload("res://scripts/warden_combat.gd").new()
+	if index in [1,3]:
+		player.combat = preload("res://scripts/skirmisher_combat.gd").new()
+		player.combat.wildborn = index==3
+	else:
+		player.combat = preload("res://scripts/mage_combat.gd").new() if index==2 else preload("res://scripts/warden_combat.gd").new()
 	player.combat.actor = player
 	player.add_child(player.combat)
 	player.appearance.class_index = index
@@ -152,11 +296,18 @@ func select_class(index: int) -> void:
 	player.appearance.phase = 0
 	if is_instance_valid(action_hud):
 		action_hud.update_tooltips()
+	save_progress()
 
 func load_map(index: int) -> void:
-	for node in terrain_nodes + combat_targets + portals + pickups:
+	for transient in get_tree().get_nodes_in_group("map_combat_transients"):
+		if transient.get_parent()==self:
+			remove_child(transient)
+			transient.queue_free()
+	for node in terrain_nodes + combat_targets + portals + pickups + map_props:
 		remove_child(node)
 		node.queue_free()
+	map_props.clear()
+	boss=null
 	terrain_nodes.clear()
 	combat_targets.clear()
 	portals.clear()
@@ -174,28 +325,24 @@ func load_map(index: int) -> void:
 		terrain.modulate = Color.WHITE if index == 0 else Color(0.73,0.82,0.94)
 		add_child(terrain)
 		terrain_nodes.append(terrain)
-	spawn_mobs()
-	if index==0:
-		spawn_equipment()
-	var portal := preload("res://scripts/forest_portal.gd").new()
-	portal.position = Vector2(1210 if index == 0 else 70,700)
-	portal.destination = 1-index
-	portal.destination_name = MAPS[portal.destination].name
-	add_child(portal)
-	portals.append(portal)
+	if index<2: spawn_mobs()
+	if index==0: spawn_equipment()
+	spawn_map_content()
+	if index>0: add_portal(index-1,70)
+	if index<MAPS.size()-1: add_portal(index+1,1210)
 	player.reset()
 	player.position.x = 130 if index == 0 else 165
 
 func spawn_equipment() -> void:
-	for class_id in [0,2]:
-		for slot in 4:
+	for class_id in 4:
+		for slot in player.equipment.SLOTS.size():
 			if player.equipment.owned[class_id][slot]: continue
 			var item := preload("res://scripts/equipment_pickup.gd").new()
 			item.world = self
 			item.class_id = class_id
 			item.slot = slot
 			item.position = Vector2(185+slot*62,700)
-			item.icon = preload("res://scripts/modular_character.gd").item_icon(class_id,slot)
+			item.icon = player.equipment.item_icon(slot)
 			add_child(item)
 			pickups.append(item)
 
@@ -224,6 +371,7 @@ func try_portal() -> void:
 func change_map(index: int) -> void:
 	if transitioning or index < 0 or index >= MAPS.size():
 		return
+	var previous_map := map_index
 	transitioning = true
 	player.set_physics_process(false)
 	for mob in combat_targets:
@@ -243,7 +391,7 @@ func change_map(index: int) -> void:
 	player.burrow_cooldown = burrow_cooldown
 	player.stamina_regen_wait = regen_wait
 	# Arrival stays away from the return portal, so a held key cannot bounce back.
-	if index == 0:
+	if index < previous_map:
 		player.position.x = 1135
 	for mob in combat_targets:
 		mob.set_physics_process(false)
@@ -254,6 +402,7 @@ func change_map(index: int) -> void:
 	for mob in combat_targets:
 		mob.set_physics_process(true)
 	transitioning = false
+	save_progress()
 
 func add_tree(at: Vector2, size: float, flipped: bool, tint: Color) -> void:
 	var tree := Sprite2D.new()
@@ -277,6 +426,7 @@ func on_feedback(kind: String, at: Vector2) -> void:
 
 func _process(delta: float) -> void:
 	elapsed += delta
+	notice_time=maxf(0,notice_time-delta)
 	player.appearance.modulate = Color(1.0,0.55,0.5) if player.hurt_time > 0.3 else Color.WHITE
 	for portal in portals:
 		portal.nearby = can_enter(portal)
@@ -286,10 +436,34 @@ func _process(delta: float) -> void:
 		select_class(0)
 	if Input.is_action_just_pressed("mage_class"):
 		select_class(2)
-	if player.appearance.class_index==2:
-		if Input.is_action_just_pressed("cycle_element"):
+	if Input.is_action_just_pressed("strider_class"): select_class(1)
+	if Input.is_action_just_pressed("wildborn_class"): select_class(3)
+	if Input.is_action_just_pressed("cycle_element") and not player.combat.active:
+		if player.appearance.class_index==2:
 			player.combat.select_element((player.combat.element+1)%4)
+		elif player.appearance.class_index in [1,3]:
+			player.combat.select_style((player.combat.style+1)%4)
+		else:
+			var next_style: int = (player.combat.selected+1)%4
+			player.combat.cancel()
+			player.combat.selected = next_style
+			player.combat.weapon = player.combat.selected
+			player.appearance.weapon_index = player.combat.selected
+	if character_creation.visible and character_creation.name_input.has_focus():
+		return
+	if Input.is_action_just_pressed("character_creation"):
+		if character_creation.visible: character_creation.hide()
+		else:
+			equipment_panel.hide()
+			character_creation.open()
+		return
+	if Input.is_action_just_pressed("passive_tree"):
+		character_creation.hide()
+		equipment_panel.hide()
+		passive_tree.open()
+		return
 	if Input.is_action_just_pressed("equipment"):
+		character_creation.hide()
 		equipment_panel.visible = not equipment_panel.visible
 	if Input.is_action_just_pressed("pickup"):
 		pickup_nearest()
@@ -300,6 +474,8 @@ func _process(delta: float) -> void:
 			mob.reset()
 	if Input.is_action_just_pressed("flourish"):
 		player.combat.start()
+	for i in 2:
+		if Input.is_action_just_pressed("ability_%d" % i): player.use_gem(i)
 	if Input.is_action_just_pressed("layers"):
 		inspect_layers = not inspect_layers
 		backdrop.visible = not inspect_layers
@@ -327,3 +503,6 @@ func _draw() -> void:
 		var tint := Color("d9bb81")
 		tint.a = mote.life * 1.3
 		draw_circle(mote.p,mote.radius*(1.4-mote.life),tint)
+
+func _notification(what: int) -> void:
+	if what==NOTIFICATION_WM_CLOSE_REQUEST: save_progress()

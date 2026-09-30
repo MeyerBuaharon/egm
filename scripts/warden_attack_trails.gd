@@ -14,7 +14,7 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO,0,Vector2(combat.direction,1))
 	var time: float = combat.time
 	if combat.mode==combat.Mode.REGULAR:
-		if actor.modular_equipment:
+		if actor.warden_fullbody_enabled:
 			var phase: float = time/combat.combo_duration()
 			if phase>=0.2 and phase<=0.8:
 				draw_sweep((phase-0.2)/0.6,combat.combo_index==2,48)

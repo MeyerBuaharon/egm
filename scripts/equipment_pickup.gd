@@ -31,5 +31,5 @@ func _draw() -> void:
 	if icon:
 		draw_texture_rect(icon,Rect2(-15,-36+sin(clock*2.3)*2,30,30),false)
 	if nearby and world.nearest_pickup()==self:
-		var caption: String = "F • Wear " + preload("res://scripts/character_equipment.gd").ITEM_NAMES[class_id][slot]
+		var caption: String = "F • " + ("Socket " if slot>=3 else "Equip ") + preload("res://scripts/character_equipment.gd").NAMES[slot]
 		draw_string(ThemeDB.fallback_font,Vector2(-70,-48),caption,HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("ffebba"))

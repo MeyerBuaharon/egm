@@ -3,7 +3,7 @@ extends Control
 const WIDTH := 660.0
 const KEYS := ["J","SPACE","SHIFT","S / ↓","1","2","3","4"]
 const NAMES := ["Attack","Jump","Dash","Burrow","Unassigned","Unassigned","Unassigned","Unassigned"]
-const ABILITY_LEVELS := [5,10,15,20]
+const ABILITY_LEVELS := [1,1,15,20]
 const GOLD := Color("e7c989")
 var world: Node2D
 var panel: StyleBoxFlat
@@ -31,9 +31,13 @@ func _process(_delta: float) -> void:
 func update_tooltips() -> void:
 	var mage: bool = world.player.appearance.class_index==2
 	get_child(0).tooltip_text = "J: Three-hit elemental combo • 6 / 8 / 12 MP. Third hit applies the selected element. Q switches element. In air: juggle combo. Underground: 18 MP eruption, then J to chain an air combo." if mage else "J: Attack • 12 stamina per swing. Press again to queue the next hit."
+	if "style" in world.player.combat:
+		get_child(0).tooltip_text = "J: Three-hit combo • %.0f stamina per attack. Q cycles styles. Underground J/release: 22 stamina ambush; J continues in air." % world.player.combat.attack_cost()
 	for i in 4:
 		var unlocked: bool = world.character_level>=ABILITY_LEVELS[i]
 		get_child(i+4).tooltip_text = "%d: Leveling ability slot — %s. Abilities are separate from elemental attacks." % [i+1,"unlocked, no ability equipped" if unlocked else "unlocks at level %d" % ABILITY_LEVELS[i]]
+		if i<2:
+			get_child(i+4).tooltip_text=world.player.equipment.DETAILS[i+5]+("" if world.player.equipment.has_equipped(world.player.appearance.class_index,i+5) else " Socket this gem in Inventory first.")
 
 func text(at: Vector2, value: String, size := 11, color := GOLD) -> void:
 	draw_string(ThemeDB.fallback_font,at,value,HORIZONTAL_ALIGNMENT_LEFT,-1,size,color)
@@ -46,6 +50,9 @@ func bar(rect: Rect2, value: float, maximum: float, tint: Color, caption: String
 
 func attack_status() -> Dictionary:
 	var c: Node = world.player.combat
+	if "style" in c:
+		var duration: float=c.combo_duration()
+		return {"hit":c.combo_index if c.active else 0,"remaining":maxf(0,duration-c.time) if c.active else 0.0,"duration":duration,"queued":c.queued}
 	var hit: int = c.air.stage if c.active and c.mode == c.Mode.AIR else c.combo_index
 	if c.active and c.mode not in [c.Mode.REGULAR,c.Mode.AIR]:
 		hit = 1
@@ -84,6 +91,16 @@ func cooldown(center: Vector2, remaining: float, duration: float) -> void:
 	text(center+Vector2(-11,4),"%.1f" % remaining,12,Color.WHITE)
 
 func icon(index: int, center: Vector2, tint: Color) -> void:
+	var class_id: int=world.player.appearance.class_index
+	if index in [4,5] and world.player.equipment.has_equipped(class_id,index+1):
+		draw_texture_rect(world.player.equipment.item_icon(index+1),Rect2(center-Vector2(15,16),Vector2(30,32)),false)
+		return
+	if index==0 and class_id in [1,3]:
+		for i in (2 if class_id==1 else 3):
+			var x := float(i)*9-9
+			draw_polyline(PackedVector2Array([center+Vector2(x-4,12),center+Vector2(x+1,-4),center+Vector2(x+6,-13)]),tint,3,true)
+			if class_id==1: draw_line(center+Vector2(x-8,6),center+Vector2(x+2,10),tint,2,true)
+		return
 	var mage: bool = world.player.appearance.class_index==2
 	if mage and index==0:
 		var element: int = world.player.combat.element
@@ -121,7 +138,8 @@ func _draw() -> void:
 	for i in 8:
 		var at := Vector2(20+i*78,26)
 		var center := at+Vector2(27,24)
-		var tint := GOLD if i<4 else Color("59625f")
+		var gem_active: bool=i in [4,5] and p.equipment.has_equipped(p.appearance.class_index,i+1)
+		var tint := GOLD if i<4 or gem_active else Color("59625f")
 		var cost: float = [p.attack_stamina_cost,0,p.dash_stamina_cost,p.burrow_stamina_cost,0,0,0,0][i]
 		var exhausted: bool = i<4 and not p.can_pay_stamina(cost)
 		if mage and i==0:
@@ -139,14 +157,19 @@ func _draw() -> void:
 		elif i==1:
 			text(at+Vector2(44,12),"2" if p.is_on_floor() else ("1" if p.air_jump else "0"),11)
 		elif i==2:
-			cooldown(center,p.dash_cooldown,p.dash_recharge)
+			cooldown(center,p.dash_cooldown,p.dash_recharge*(0.75 if p.has_passive("echo") else 1.0))
 		elif i==3:
 			cooldown(center,p.burrow_cooldown,p.burrow_recharge)
 			if p.burrowed:
 				text(at+Vector2(2,14),"DRAIN",9,Color("a6cc80"))
-		text(at+Vector2(3,46),KEYS[i],9,Color("efede4") if i<4 else Color("697675"))
+		elif i in [4,5] and p.equipment.has_equipped(p.appearance.class_index,i+1):
+			cooldown(center,p.gem_cooldowns[i-4],p.GEM_RECHARGE[i-4])
+			if p.mana<p.GEM_COSTS[i-4]: text(at+Vector2(3,14),"LOW MP",8,Color("be655a"))
+		text(at+Vector2(3,46),KEYS[i],9,Color("efede4") if i<4 or gem_active else Color("697675"))
 		if i>=4:
-			text(at+Vector2(7,11),"EMPTY" if world.character_level>=ABILITY_LEVELS[i-4] else "LV %d" % ABILITY_LEVELS[i-4],9,tint)
+			var caption: String="EMPTY" if world.character_level>=ABILITY_LEVELS[i-4] else "LV %d" % ABILITY_LEVELS[i-4]
+			if i in [4,5] and p.equipment.has_equipped(p.appearance.class_index,i+1): caption="NOVA" if i==4 else "RENEW"
+			text(at+Vector2(7,11),caption,9,tint)
 	bar(Rect2(12,88,636,5),world.experience,world.experience_needed,Color("ad8a46"),"")
 	text(Vector2(14,85),"LV %d   •   XP %d / %d" % [world.character_level,world.experience,world.experience_needed],9,GOLD)
-	text(Vector2(370,85),("Q • " + p.combat.ELEMENTS[p.combat.element] + "    |    1–4 Leveling abilities") if mage else "1–4 Leveling abilities",9,Color("a6b5aa"))
+	text(Vector2(370,85),"Q • " + preload("res://scripts/class_roster.gd").style_name(p.appearance.class_index,p.combat) + "  |  1–4 Abilities",9,Color("a6b5aa"))

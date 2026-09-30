@@ -26,10 +26,14 @@ func _draw() -> void:
 	for mob in world.combat_targets:
 		if mob.health > 0:
 			draw_circle(project(mob.position),2.5,Color("e4897b"))
+	for item in world.pickups:
+		if "kind" in item and item.kind in ["cache","memory","seal","shrine"] and not item.is_claimed():
+			var at := project(item.position)
+			draw_colored_polygon(PackedVector2Array([at+Vector2(0,-3),at+Vector2(3,0),at+Vector2(0,3),at+Vector2(-3,0)]),Color("d6be83"))
 	var point := project(world.player.position)
 	draw_circle(point,5,Color(0.1,0.1,0.1,0.8))
 	draw_circle(point,3.2,Color("ffe38e"))
-	draw_string(font,Vector2(14,167),"● You     ● Mobs     ○ Portal",HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color("bdcdc7"))
+	draw_string(font,Vector2(14,167),"● You   ● Foes   ◆ Finds   ○ Portal",HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color("bdcdc7"))
 
 func panel_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()

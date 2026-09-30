@@ -1,5 +1,6 @@
 extends Node2D
 
+const FORWARD_GLIDE = preload("res://assets/characters/fullbody/mage-forward-glide.png")
 const SHEET = preload("res://assets/characters/fullbody/mage-hover.png")
 const CAST_SHEETS = [preload("res://assets/characters/fullbody/mage-fire.png"),preload("res://assets/characters/fullbody/mage-ice.png"),preload("res://assets/characters/fullbody/mage-wind.png"),preload("res://assets/characters/fullbody/mage-earth.png")]
 const CAST_X := [0,442,852,1254]
@@ -112,22 +113,37 @@ func _draw() -> void:
 			draw_colored_polygon(vertices,Color(1,1,1,alpha),uv,texture)
 		else:
 			draw_texture_rect_region(texture,Rect2(at,region.size*scale_factor),region,Color(1,1,1,alpha))
+	elif absf(actor.velocity.x)>25:
+		# One intact painted flight pose: bent rear knee, extended other leg.
+		source_scale = 0.092
+		source_feet = 1150
+		source_root = 750
+		head_anchor = Vector2(856,268)
+		hand_anchors = [Vector2(417,548),Vector2(878,645)]
+		at = Vector2(-source_root,-source_feet)*source_scale
+		draw_texture_rect(FORWARD_GLIDE,Rect2(at,FORWARD_GLIDE.get_size()*source_scale),false,Color(1,1,1,alpha))
 	else:
 		draw_texture_rect_region(SHEET,Rect2(at,region.size*HOVER_SCALE),region,Color(1,1,1,alpha))
 	update_equipment(head_anchor,hand_anchors,source_scale,source_feet,source_root,lift,lean,alpha)
 	draw_set_transform(Vector2.ZERO)
 
 func update_equipment(head_at: Vector2, hand_at: Array, source_scale: float, feet_y: float, root_x: float, lift: float, lean: float, alpha: float) -> void:
-	var gear: RefCounted = actor.equipment
-	equipment_material.set_shader_parameter("wear_robes",gear.has_equipped(2,1))
-	equipment_material.set_shader_parameter("wear_gloves",gear.has_equipped(2,2))
-	equipment_material.set_shader_parameter("wear_boots",gear.has_equipped(2,3))
+	# Permanent class outfit; inventory never changes the model.
+	equipment_material.set_shader_parameter("fabric_tint",Vector3(0.10,0.06,0.22))
+	equipment_material.set_shader_parameter("glove_tint",Vector3(0.13,0.14,0.22))
+	equipment_material.set_shader_parameter("boot_tint",Vector3(0.13,0.14,0.22))
+	hood.modulate=Color.WHITE
+	preload("res://scripts/character_presets.gd").apply_to(equipment_material,0)
+	equipment_material.set_shader_parameter("raised_boot_at",Vector2(426,790) if not actor.combat.active and absf(actor.velocity.x)>25 else Vector2(-10000,-10000))
+	equipment_material.set_shader_parameter("wear_robes",true)
+	equipment_material.set_shader_parameter("wear_gloves",true)
+	equipment_material.set_shader_parameter("wear_boots",true)
 	equipment_material.set_shader_parameter("head_at",head_at)
 	equipment_material.set_shader_parameter("hand_a",hand_at[0])
 	equipment_material.set_shader_parameter("hand_b",hand_at[1])
 	equipment_material.set_shader_parameter("pixel_scale",source_scale)
 	equipment_material.set_shader_parameter("feet_y",feet_y)
-	hood.visible = gear.has_equipped(2,0) and visible and alpha>0.01
+	hood.visible = visible and alpha>0.01
 	var head_local := (head_at-Vector2(root_x,feet_y))*source_scale
 	head_local += Vector2(-3,0)
 	var body_transform := Transform2D(lean,Vector2(actor.facing,1),0,Vector2(0,19+lift))

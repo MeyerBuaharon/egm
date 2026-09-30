@@ -1,4 +1,74 @@
-# Underfoot — movement lab
+# Underfoot
+
+## Separate class sandbox
+
+`./play.sh res://class_sandbox.tscn` opens the new starting-item prototype.
+Female Warden/Wildborn, male Strider/Hexbinder, sixteen starting items, locked
+run loadouts and nonvisual jewelry/gems. See [CLASS-SANDBOX.md](CLASS-SANDBOX.md).
+Campaign models and save data remain separate.
+
+## Current playable forest build
+
+Run `./play.sh res://forest_slice.tscn`.
+
+| Key | Class | Q cycles |
+| --- | --- | --- |
+| F1 | Warden | Sword, Axe, Hammer, Spear |
+| F2 | Hexbinder (Mage) | Fire, Ice, Wind, Earth |
+| F3 | Strider | Bloodletter, Venom, Shadow, Flurry |
+| F4 | Wildborn | Claws, Thorns, Roots, Feral |
+
+A/D or arrows move; J attacks and queues combos; Shift dashes; Space jumps.
+Hold S/Down on the ground to dig; release or attack to emerge (Warden retains
+his original weapon-specific attacks). Down + Space drops through a platform.
+Up/E uses the nearby portal. F collects class equipment, I opens the inventory,
+C edits the character name. F8 toggles scene-layer diagnostics.
+
+Each class now has one fixed model. Equipment never changes its appearance; Mage
+starts in his permanent purple-and-gold hood, robes, gloves and boots. Armor
+pickups and armor finish controls have been removed. C edits the character name.
+
+Equipment: two rings, one amulet and four body gem sockets. F collects/equips;
+I opens the inventory; click an equipped item to store it, then a bag item to equip.
+
+| Item / body socket | Effect |
+| --- | --- |
+| Iron signet | Reduce incoming damage by 2 |
+| Sapphire ring | +3 MP regeneration / second |
+| Vitality amulet | +4 stamina regeneration / second |
+| Aegis / heart | Reduce incoming damage by 3 |
+| Gale / lungs | +15% movement speed |
+| Nova / hand | Key 1: 20 area damage, 15 MP, 8-second cooldown |
+| Renewal / core | Key 2: restore 25 HP, 20 MP, 12-second cooldown |
+
+Active gems are separate from Q's class combat styles. Keys 3–4 remain future
+leveling slots. P opens the passive tree and pauses play; F collects nearby loot
+or uses a wayshrine. The minimap marks loot, enemies and portals.
+
+The campaign connects Forest Edge → Deep Grove → Mansion Gate, with return
+portals, chests, memory shards, dropped embers/tonics and healing wayshrines.
+Nine passives across Might, Resolve and Wayfarer spend level/shard points and
+embers. The Hollow Regent guards the final gate with warned root eruptions,
+ground slams, summoned rootlings and a faster second phase. Defeating it awards
+a seal: collect it for three points, 30 embers and permanent +10% damage.
+
+Progress, names, jewelry/gems, claimed loot, passives and boss completion save
+between sessions to `user://forest-progress-v1.json`, with an atomic write and
+backup. Resume starts at the saved map entrance with replenished resources.
+`./play.sh -- --fresh` runs a temporary session without loading or saving.
+
+Strider and Wildborn now use generated full-body run frames, like the Warden.
+The previous articulated-leg version was rejected in play and is superseded.
+Four intact poses animate the body, arms and scarf/mane; Strider sheathes his
+daggers while running. Cadence follows velocity. Other actions retain their
+existing artwork. See [art prompts and registration](assets/characters/roster/RUN-V4.md)
+and [full-body run preview](previews/fullbody-run.mp4).
+
+Campaign implementation, validation and limits: [CONTENT-WORK.md](CONTENT-WORK.md).
+Preview: [passive tree](previews/passive-tree.png),
+[boss encounter](previews/campaign-boss-warning.png).
+
+## Earlier movement lab and development notes
 
 Open `project.godot` in Godot 4.7 and press F6 with `main.tscn` open (or F5).
 If the bundled engine is available, run `./play.sh`.

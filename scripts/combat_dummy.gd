@@ -12,8 +12,11 @@ var clock := 0.0
 var hit_count := 0
 var flash := 0.0
 var suspended := 0.0
+var max_health := 100
 var health := 100
+var ailments: Dictionary = {}
 func reset() -> void:
+	ailments.clear()
 	position = spawn
 	velocity = Vector2.ZERO
 	stunned = 0
@@ -27,6 +30,8 @@ func reset() -> void:
 func hit_rect() -> Rect2:
 	return Rect2(position+Vector2(-17,-18),Vector2(34,36))
 func regular_hit(amount: int = 10) -> void:
+	if is_instance_valid(world) and world.has_method("modify_damage"):
+		amount=world.modify_damage(amount,health,max_health)
 	health = maxi(0,health-amount)
 	hit_count += 1
 	flash = 0.18
@@ -50,6 +55,7 @@ func receive(weapon: int, direction: float, stun_time: float, bury_time: float) 
 		bury_on_land = bury_time
 		velocity = Vector2(0,850)
 func _physics_process(dt: float) -> void:
+	tick_ailments(dt)
 	clock += dt
 	flash = maxf(0,flash-dt)
 	stunned = maxf(0,stunned-dt)
@@ -109,3 +115,23 @@ func _draw() -> void:
 	if buried>0:
 		draw_line(Vector2(-22,18),Vector2(22,18),Color("ba9473"),4)
 	draw_string(ThemeDB.fallback_font,Vector2(-30,-27),label,HORIZONTAL_ALIGNMENT_LEFT,-1,11,color)
+
+func apply_ailment(kind: String, duration: float, damage: int) -> void:
+	if health<=0 or kind not in ["bleed","poison","root"]: return
+	var old: Dictionary=ailments.get(kind,{"life":0.0,"tick":0.0,"damage":0})
+	ailments[kind]={"life":maxf(duration,old.life),"tick":old.tick,"damage":maxi(damage,old.damage)}
+	if kind=="root": stunned=maxf(stunned,duration)
+
+func tick_ailments(dt: float) -> void:
+	if health<=0:
+		ailments.clear()
+		return
+	for kind in ailments.keys():
+		var effect: Dictionary=ailments[kind]
+		effect.tick+=minf(dt,effect.life)
+		effect.life-=dt
+		if kind=="root": stunned=maxf(stunned,maxf(0,effect.life))
+		while effect.damage>0 and effect.tick>=0.5 and health>0:
+			effect.tick-=0.5
+			regular_hit(effect.damage)
+		if effect.life<=0: ailments.erase(kind)

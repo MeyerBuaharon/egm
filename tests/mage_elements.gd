@@ -82,13 +82,13 @@ func run() -> void:
 	room._process(0)
 	Input.action_release("cycle_element")
 	check(p.combat.element==1,"Q cycles the basic attack element")
-	room.character_level = 4
+	room.character_level = 14
 	room.experience = room.experience_needed-25
 	room.action_hud.update_tooltips()
-	check("unlocks at level 5" in room.action_hud.get_child(4).tooltip_text,"Leveling slot starts locked")
+	check("unlocks at level 15" in room.action_hud.get_child(6).tooltip_text,"Additional leveling slot starts locked")
 	room.award_mob_xp()
 	room.action_hud.update_tooltips()
-	check("unlocked, no ability equipped" in room.action_hud.get_child(4).tooltip_text,"Earning level 5 unlocks an empty ability slot")
+	check("unlocked, no ability equipped" in room.action_hud.get_child(6).tooltip_text,"Earning level 15 unlocks an empty ability slot")
 	# Insufficient MP cannot start a cast; switching mid-cast cannot change effect.
 	p.reset()
 	p.mana = 2

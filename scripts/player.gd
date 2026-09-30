@@ -53,8 +53,20 @@ var dropped_platform: PhysicsBody2D
 var drop_timer := 0.0
 var drop_requires_release := false
 
+var character_profiles := {0: {"preset": 0, "name": "Traveler"}, 1: {"preset": 0, "name": "Shade"}, 2: {"preset": 0, "name": "Traveler"}, 3: {"preset": 0, "name": "Rowan"}}
+var appearance_preset: int:
+	get: return character_profiles.get(appearance.class_index if is_instance_valid(appearance) else 0, character_profiles[0]).preset
+	set(value): character_profiles[appearance.class_index if is_instance_valid(appearance) else 0].preset = clampi(value,0,3)
+var character_name: String:
+	get: return character_profiles.get(appearance.class_index if is_instance_valid(appearance) else 0, character_profiles[0]).name
+	set(value): character_profiles[appearance.class_index if is_instance_valid(appearance) else 0].name = value
 var modular_equipment := false
+# The original authored Warden remains the default. New body is opt-in for art review.
+var warden_fullbody_enabled := false
 var equipment = preload("res://scripts/character_equipment.gd").new()
+var gem_cooldowns: Array[float]=[0.0,0.0]
+const GEM_COSTS := [15.0,20.0]
+const GEM_RECHARGE := [8.0,12.0]
 
 var combat: Node
 var appearance: Node2D
@@ -180,7 +192,7 @@ func bounce() -> void:
 	launch(jump_speed + minf(combo * 35.0, 150.0), "bounce")
 
 func exit_burrow() -> void:
-	if appearance.class_index==2 and not combat.active and combat.start():
+	if appearance.class_index in [1,2,3] and not combat.active and combat.start():
 		return
 	var emerge_rect := Rect2(Vector2(position.x - 13, FLOOR_Y - 40), Vector2(26, 38))
 	for block in world.blocks:
@@ -194,12 +206,20 @@ func exit_burrow() -> void:
 	air_jump = true
 	launch(760.0, "emerge")
 
+func has_passive(id: String) -> bool:
+	return is_instance_valid(world) and "progress" in world and world.progress.has(id)
+
 func take_damage(amount: int) -> bool:
 	if invulnerable or hurt_time > 0 or amount <= 0: return false
-	health = maxi(0,health-amount)
+	var reduction := equipment.defense(appearance.class_index)+(2 if has_passive("bark") else 0)
+	var incoming := maxi(1,amount-reduction)
+	if health<35 and has_passive("stand"): incoming=maxi(1,roundi(incoming*0.65))
+	health = maxi(0,health-incoming)
 	hurt_time = 0.5
 	feedback.emit("hurt",position)
-	if health == 0: reset()
+	if health == 0:
+		reset()
+		if world.has_method("on_player_defeated"): world.on_player_defeated()
 	return true
 
 func start_dash() -> bool:
@@ -210,7 +230,7 @@ func start_dash() -> bool:
 	dash_direction = axis if axis != 0 else facing
 	facing = dash_direction
 	dash_time = dash_duration
-	dash_cooldown = dash_recharge
+	dash_cooldown = dash_recharge*(0.75 if has_passive("echo") else 1.0)
 	jump_buffer = 0
 	set_low(false)
 	feedback.emit("dash",position)
@@ -239,18 +259,19 @@ func begin_burrow_cooldown() -> void:
 		burrow_cooldown = burrow_recharge
 
 func tick_resources(dt: float) -> void:
+	for i in 2: gem_cooldowns[i]=maxf(0,gem_cooldowns[i]-dt)
 	if not stamina_enabled:
 		return
-	mana = minf(max_mana,mana+mana_regen*dt)
+	mana = minf(max_mana,mana+(mana_regen+equipment.mana_regen(appearance.class_index))*dt)
 	burrow_cooldown = maxf(0,burrow_cooldown-dt)
 	stamina_regen_wait = maxf(0,stamina_regen_wait-dt)
 	if burrowed:
-		stamina = maxf(0,stamina-burrow_stamina_drain*dt)
+		stamina = maxf(0,stamina-burrow_stamina_drain*dt*(0.75 if has_passive("deep") else 1.0))
 		stamina_regen_wait = 0.9
 		if stamina <= 0:
 			burrow_exit_requested = true
 	elif stamina_regen_wait <= 0 and not combat.active and dash_time <= 0:
-		stamina = minf(max_stamina,stamina+stamina_regen*dt)
+		stamina = minf(max_stamina,stamina+(stamina_regen+equipment.stamina_regen(appearance.class_index)+(4.0 if has_passive("breath") else 0.0))*dt)
 
 func tick_dash(dt: float) -> void:
 	velocity = Vector2(dash_direction*dash_speed,0)
@@ -258,7 +279,7 @@ func tick_dash(dt: float) -> void:
 	dash_time = maxf(0,dash_time-dt)
 	if is_on_wall(): dash_time = 0
 	if dash_time <= 0:
-		var cruise_speed := mage_glide_speed if appearance.class_index == 2 else (warden_run_speed if appearance.class_index == 0 else run_speed)
+		var cruise_speed := current_run_speed()
 		velocity.x = dash_direction*cruise_speed
 	state = "Dash · invulnerable"
 	trail.push_front(position)
@@ -309,7 +330,7 @@ func _physics_process(dt: float) -> void:
 		if warden and not burrow_impact_sent and burrow_time >= warden_burrow_entry * 0.42:
 			burrow_impact_sent = true
 			feedback.emit("burrow_impact", Vector2(position.x, FLOOR_Y))
-		var underground_speed := warden_dig_speed if warden else dig_speed
+		var underground_speed := warden_dig_speed if warden else (330.0 if modular_equipment and appearance.class_index==3 else dig_speed)
 		velocity.x = 0.0 if entering else move_toward(velocity.x,axis*underground_speed,acceleration*dt)
 		position.x = clampf(position.x + velocity.x * dt, 55, 1225)
 		position.y = FLOOR_Y + 25
@@ -340,7 +361,7 @@ func _physics_process(dt: float) -> void:
 	if wall_lock <= 0:
 		var warden: bool = appearance.class_index == 0
 		var mage: bool = appearance.class_index == 2
-		var top_speed := mage_glide_speed if mage else (warden_run_speed if warden else run_speed)
+		var top_speed := current_run_speed()
 		var target := axis * top_speed
 		var ground_accel := warden_acceleration if warden else acceleration
 		if warden and axis == 0:
@@ -403,5 +424,40 @@ func _draw() -> void:
 	for i in range(trail.size()):
 		if absf(velocity.x) > 380:
 			draw_circle(trail[i] - position, 10 - i * 0.7, Color(0.35, 0.9, 0.76, 0.12 * (1.0 - i / 10.0)))
-	if air_jump:
+	if air_jump and not modular_equipment:
 		draw_circle(Vector2(0, -46), 3, Color("eef6eb"))
+
+func current_run_speed() -> float:
+	return base_run_speed()*equipment.speed_multiplier(appearance.class_index)*(1.1 if has_passive("fleet") else 1.0)
+
+func base_run_speed() -> float:
+	match appearance.class_index:
+		0: return warden_run_speed
+		2: return mage_glide_speed
+		1: return 300.0 if modular_equipment else run_speed
+		3: return 240.0 if modular_equipment else run_speed
+	return run_speed
+
+func use_gem(index: int) -> bool:
+	if index<0 or index>1 or not equipment.has_equipped(appearance.class_index,index+5): return false
+	if gem_cooldowns[index]>0 or burrowed or combat.active or dash_time>0: return false
+	if index==1 and health>=100: return false
+	if not spend_mana(GEM_COSTS[index]): return false
+	gem_cooldowns[index]=GEM_RECHARGE[index]
+	if index==1:
+		health=mini(100,health+25)
+	else:
+		for enemy in world.combat_targets:
+			if enemy.health<=0 or position.distance_to(enemy.position)>145: continue
+			var ray := PhysicsRayQueryParameters2D.create(position,enemy.position,1,[get_rid()])
+			if not get_world_2d().direct_space_state.intersect_ray(ray).is_empty(): continue
+			enemy.regular_hit(20)
+			feedback.emit("regular_hit",enemy.position)
+	var effect := preload("res://scripts/skirmisher_effect.gd").new()
+	effect.position=position+Vector2(0,-20)
+	effect.kind="gem"
+	effect.tint=Color("c8a3f2") if index==0 else Color("74dbc8")
+	effect.radius=145 if index==0 else 45
+	effect.duration=0.5
+	world.add_child(effect)
+	return true

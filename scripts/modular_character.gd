@@ -15,8 +15,19 @@ var blade_angle := 0.0
 var spell_visual: Node2D
 var trails: Node2D
 
-static func item_icon(class_id: int, slot: int) -> AtlasTexture:
+static func item_icon(class_id: int, slot: int) -> Texture2D:
+	if slot>=4:
+		return preload("res://scripts/jewelry_icon.gd").make_icon(slot)
 	var texture := AtlasTexture.new()
+	if class_id in [1,3]:
+		if class_id==1 and slot==0:
+			var circlet := Image.new()
+			circlet.load_svg_from_string('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><path d="M8 35 Q32 18 56 35 L55 43 Q32 27 9 43Z" fill="#778eaa" stroke="#e7cc86" stroke-width="2"/><path d="M32 21 L39 30 L32 41 L25 30Z" fill="#80cfd6" stroke="#e7cc86" stroke-width="2"/></svg>')
+			return ImageTexture.create_from_image(circlet)
+		texture.atlas=preload("res://assets/characters/roster/strider-movement.png") if class_id==1 else preload("res://assets/characters/roster/wildborn-movement.png")
+		var regions := [Rect2(133,50,91,87),Rect2(96,112,105,118),Rect2(64,173,45,56),Rect2(63,252,48,66)] if class_id==1 else [Rect2(155,38,83,96),Rect2(81,110,118,155),Rect2(32,164,58,78),Rect2(36,265,76,56)]
+		texture.region=regions[slot]
+		return texture
 	texture.atlas = MAGE if class_id==2 else WARDEN
 	texture.region = (MAGE_REGIONS if class_id==2 else WARDEN_REGIONS)[ICON_PARTS[slot]]
 	return texture

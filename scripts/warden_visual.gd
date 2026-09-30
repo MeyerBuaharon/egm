@@ -30,7 +30,7 @@ var body_offset := Vector2.ZERO
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://shaders/pixel_cutout.gdshader")
+	mat.shader = preload("res://shaders/roster_equipment.gdshader")
 	material = mat
 	actor.feedback.connect(on_feedback)
 	var trails := preload("res://scripts/warden_attack_trails.gd").new()
@@ -45,7 +45,7 @@ func start_slash() -> bool:
 	return actor.combat.start()
 
 func _process(dt: float) -> void:
-	visible = actor.appearance.class_index == 0 and not actor.modular_equipment
+	visible = actor.appearance.class_index == 0 and not actor.warden_fullbody_enabled
 	if not visible:
 		slash_time = -1
 		return
@@ -112,6 +112,7 @@ func _process(dt: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	preload("res://scripts/armor_palette.gd").apply_to(material,0,actor.equipment,actor.appearance_preset)
 	if actor.burrowed:
 		var surface := Vector2(0,-25)
 		for i in 5:
@@ -130,12 +131,12 @@ func _draw() -> void:
 				if air.time < 0.30:
 					# Unarmed raised-gauntlet pose during the throw: no second held blade.
 					draw_set_transform(Vector2(0,19),0,Vector2(actor.facing,1))
-					draw_texture_rect_region(ATLAS,Rect2(Vector2(-214,-237)*0.29,Vector2(384,254)*0.29),Rect2(1152,770,384,254))
+					paint_region(ATLAS,Rect2(Vector2(-214,-237)*0.29,Vector2(384,254)*0.29),Rect2(1152,770,384,254))
 					draw_set_transform(Vector2.ZERO)
 					return
 				if air.time >= 0.30:
 					draw_set_transform(Vector2(0,19),0,Vector2(actor.facing,1))
-					draw_texture_rect_region(ATLAS,Rect2(Vector2(-210,-260)*0.29,Vector2(384,272)*0.29),Rect2(0,0,384,272))
+					paint_region(ATLAS,Rect2(Vector2(-210,-260)*0.29,Vector2(384,272)*0.29),Rect2(0,0,384,272))
 					draw_set_transform(Vector2.ZERO)
 					return
 		if actor.combat.mode == actor.combat.Mode.REGULAR:
@@ -167,7 +168,7 @@ func _draw() -> void:
 			# Preserve the raised spear tip above the safe body crop, away from the boot pixels.
 			var tip_source := Rect2(650,737,118,6) if col == 1 else Rect2(1000,753,152,9)
 			var tip_at := (tip_source.position-Vector2(col*384+anchor.x,bottom-5))*0.29+Vector2(0,29)
-			draw_texture_rect_region(COMBAT,Rect2(tip_at,tip_source.size*0.29),tip_source)
+			paint_region(COMBAT,Rect2(tip_at,tip_source.size*0.29),tip_source)
 		draw_set_transform(Vector2.ZERO)
 		return
 	if run_frame >= 0:
@@ -182,7 +183,7 @@ func _draw() -> void:
 		var source := Rect2(q.x*RUN_CELL,q.y*RUN_CELL,RUN_CELL,RUN_CELL)
 		var anchor := Vector2(RUN_HELM,RUN_GROUND[run_frame])
 		draw_set_transform(Vector2(0,19),0,Vector2(actor.facing,1))
-		draw_texture_rect_region(NEWRUN,Rect2(-anchor*RUN_FACTOR,source.size*RUN_FACTOR),source)
+		paint_region(NEWRUN,Rect2(-anchor*RUN_FACTOR,source.size*RUN_FACTOR),source)
 		draw_set_transform(Vector2.ZERO)
 		return
 	var row := frame/4
@@ -191,7 +192,7 @@ func _draw() -> void:
 	var factor := 0.29
 	var destination := Rect2(Vector2(-ROOT_X[frame]*factor,(ROW_TOP[row]-GROUND_Y[frame])*factor),source.size*factor)
 	draw_set_transform(Vector2(0,19)+body_offset,0,Vector2(actor.facing,1))
-	draw_texture_rect_region(ATLAS,destination,source,Color(1,1,1,paint_alpha))
+	paint_region(ATLAS,destination,source,Color(1,1,1,paint_alpha))
 	draw_set_transform(Vector2.ZERO)
 
 # All four weapons use connected-component repacked atlases: each pose isolated onto
@@ -220,7 +221,7 @@ func draw_combo() -> void:
 	var size: Vector2 = CLEAN_CELL[weapon]
 	var source := Rect2(gcol*size.x,grow*size.y,size.x,size.y)
 	draw_set_transform(Vector2(0,19),0,Vector2(actor.facing,1))
-	draw_texture_rect_region(CLEAN_COMBO[weapon],Rect2(-CLEAN_ANCHOR[weapon]*0.34,size*0.34),source)
+	paint_region(CLEAN_COMBO[weapon],Rect2(-CLEAN_ANCHOR[weapon]*0.34,size*0.34),source)
 	draw_set_transform(Vector2.ZERO)
 
 func draw_missile() -> void:
@@ -228,7 +229,7 @@ func draw_missile() -> void:
 	draw_set_transform(Vector2.ZERO,atan2(0.8,0.6)*actor.facing,Vector2(actor.facing,1))
 	var source := Rect2(768,770,384,254)
 	var destination := Rect2(Vector2(-222,-237)*0.29+Vector2(0,19),source.size*0.29)
-	draw_texture_rect_region(ATLAS,destination,source)
+	paint_region(ATLAS,destination,source)
 	# Shaft begins inside the forward gauntlet, so it travels with the grip.
 	draw_line(Vector2(27,-4),Vector2(74,-4),Color("9b7450"),3)
 	if actor.combat.weapon == 3:
@@ -246,7 +247,15 @@ func draw_combat_region(destination: Rect2, source: Rect2) -> void:
 		var scale_factor := destination.size/source.size
 		var left := Rect2(source.position,Vector2(232,source.size.y))
 		var right := Rect2(Vector2(1000,498),Vector2(152,253))
-		draw_texture_rect_region(COMBAT,Rect2(destination.position,left.size*scale_factor),left)
-		draw_texture_rect_region(COMBAT,Rect2(destination.position+Vector2(232,0)*scale_factor,right.size*scale_factor),right)
+		paint_region(COMBAT,Rect2(destination.position,left.size*scale_factor),left)
+		paint_region(COMBAT,Rect2(destination.position+Vector2(232,0)*scale_factor,right.size*scale_factor),right)
 	else:
-		draw_texture_rect_region(COMBAT,destination,source)
+		paint_region(COMBAT,destination,source)
+
+func paint_region(texture: Texture2D, destination: Rect2, source: Rect2, tint := Color.WHITE) -> void:
+	var factor := destination.size.x/source.size.x
+	var anchor := source.position-destination.position/factor
+	material.set_shader_parameter("source_anchor",anchor)
+	material.set_shader_parameter("pixel_scale",factor)
+	material.set_shader_parameter("head_at",anchor+Vector2(5,-52)/factor)
+	draw_texture_rect_region(texture,destination,source,tint)

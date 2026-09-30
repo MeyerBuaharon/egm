@@ -38,6 +38,22 @@ func run() -> void:
 	Input.action_release("portal")
 	check(room.map_index == 0 and room.blocks.size() == 3 and room.combat_targets.size() == 4,"Return restores first map without duplicate mobs")
 	check(room.player.position.x > 1100,"Return arrives beside the original exit")
+	for next_map in [1,2]:
+		room.player.position=Vector2(1210,681)
+		room.player.velocity=Vector2.ZERO
+		await frames(5)
+		Input.action_press("portal")
+		await create_timer(0.6).timeout
+		Input.action_release("portal")
+		check(room.map_index==next_map and not room.transitioning,"Input reaches route map %d" % next_map)
+	check(is_instance_valid(room.boss) and room.portals.size()==1,"Boss arena has guardian and return portal")
+	room.player.position=Vector2(70,681)
+	room.player.velocity=Vector2.ZERO
+	await frames(5)
+	Input.action_press("portal")
+	await create_timer(0.6).timeout
+	Input.action_release("portal")
+	check(room.map_index==1 and room.player.position.x>1100,"Mansion return arrives at grove's eastern exit")
 	print("Forest portals: %d failures" % failures)
 	quit(failures)
 

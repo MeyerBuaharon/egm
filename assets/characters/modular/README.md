@@ -1,8 +1,13 @@
 # Modular characters and equipment
 
+Historical experiment: the forest uses intact full-body models, including the
+original Warden animations. Armor pickup/equipment visuals were removed on
+September 29 in favor of rings, amulets and body gems. These atlases remain only
+as archived artwork and the source of the Mage's permanent hood.
+
 **Mage override:** the user rejected the cutout body. Mage now uses complete
-painted figures in `../fullbody/`; its old visible equipment layers are disabled.
-The equipment state is retained. Warden still uses this modular renderer.
+painted figures and matching clothing overlays in `../fullbody/`. Its body is
+never assembled from parts. Warden still uses this modular renderer.
 
 The forest game uses separately painted body/gear parts for Warden and Mage.
 `mage-parts.png` and `warden-parts.png` are 1254 × 1254 RGBA atlases generated
@@ -61,3 +66,14 @@ torso and a smaller head/helmet ratio. Mage hover and glide keep the spine
 nearly vertical and arms relaxed; running lean is reduced for Warden. These
 are visual rig changes only; collision and movement values remain unchanged.
 The older deeply bent neutral pose is no longer used for modular characters.
+
+## Inventory expansion
+
+Both class loadouts now have seven slots: the four clothing slots plus two
+rings and one amulet. The I panel separates equipped items from a 16-cell bag;
+click worn gear to store it and click a bag item to equip. F collects nearby
+starter items. Jewelry is state/icon-only for now. Appearance creation (C) now supports both intact full-body renderers; see `../fullbody/README.md` for current behavior.
+
+The forest Warden now uses `scripts/warden_fullbody.gd` rather than the cutout
+body. This directory remains the source for gear icons and the helmet overlay.
+See `../fullbody/WARDEN-ASSETS.md` for the current implementation and limits.

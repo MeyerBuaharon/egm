@@ -72,6 +72,7 @@ func _ready() -> void:
 	reset()
 
 func reset() -> void:
+	max_health=40
 	super.reset()
 	health = 40
 	patrol = home_patrol
@@ -170,6 +171,7 @@ func hit_rect() -> Rect2:
 	return Rect2(position + Vector2(-22,-39),Vector2(44,57))
 
 func _physics_process(dt: float) -> void:
+	tick_ailments(dt)
 	if health <= 0:
 		tick_death(dt)
 		return
@@ -183,7 +185,8 @@ func _physics_process(dt: float) -> void:
 		burning = maxf(0,burning-dt)
 		while burn_tick>=0.5:
 			burn_tick -= 0.5
-			health = maxi(0,health-2)
+			var dot_damage: int=world.modify_damage(2,health,max_health) if world.has_method("modify_damage") else 2
+			health = maxi(0,health-dot_damage)
 		if health<=0:
 			tick_death(dt)
 			return
@@ -299,6 +302,15 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if health<=0:
 		return
+	for kind in ailments:
+		var tint := Color("b8e47c") if kind=="poison" else (Color("ee7790") if kind=="bleed" else Color("a58d58"))
+		if kind=="root":
+			for i in 3:
+				draw_arc(Vector2((i-1)*10,10-i*6),12,-2.8,0.8,12,tint,2,true)
+		else:
+			for i in 4:
+				var t := fposmod(clock+i*0.23,1)
+				draw_circle(Vector2(-15+i*10,8-t*38),1.7,Color(tint,1-t))
 	if frozen>0:
 		var ice := PackedVector2Array([Vector2(-25,18),Vector2(-28,-24),Vector2(-10,-49),Vector2(15,-48),Vector2(28,-17),Vector2(24,18),Vector2(-25,18)])
 		draw_colored_polygon(ice,Color(0.4,0.85,1,0.16))
